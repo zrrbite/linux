@@ -20,7 +20,9 @@ for the extras. The book builds Linux 7.1.8, GCC 16.2.0, glibc 2.44 and
 systemd 261.2. It has no [errata](https://www.linuxfromscratch.org/lfs/errata/13.1-systemd/)
 as of 2026-11-19.
 
-**Status:** written 2026-11-19, not yet tried on the NUC.
+**Status:** written 2026-11-19. Sections 1 and 2 and the chapter 3
+downloads were done on the workstation that day; the build itself (chapter 4
+on) hasn't been started. Not yet tried on the NUC.
 
 **Why the systemd edition:** the System V edition is no longer updated. The
 LFS release notes for 13.0 and 13.1 say it stays at 12.4
@@ -226,6 +228,7 @@ Follow the book. The notes below are the only differences.
   [`wget-list-systemd`](https://www.linuxfromscratch.org/lfs/view/13.1-systemd/wget-list-systemd),
   and check the downloads with
   [`md5sums`](https://www.linuxfromscratch.org/lfs/view/13.1-systemd/md5sums).
+  On 2026-11-19 all 94 packages downloaded and passed `md5sum -c`: 628 MB.
 - **[4.4 Setting Up the Environment](https://www.linuxfromscratch.org/lfs/view/13.1-systemd/chapter04/settingenvironment.html):**
   Ubuntu has an `/etc/bash.bashrc`. Move it out of the way as the book says,
   and put it back at the start of chapter 7. `MAKEFLAGS=-j$(nproc)` uses all
@@ -254,11 +257,12 @@ virtual file systems not remounted after a restart.
 What this guide relies on is checked. WSL's kernel has loop devices, GPT
 partitions, devtmpfs, ext4, vfat and Unix98 PTYs built in (in the config of
 `linux-msft-wsl-6.18.58.1`, and of 6.6.87.2, which the workstation's WSL
-2.6.3 runs). On 2026-11-19, section 2's steps were run on the workstation
-with a 100 MB test image: `losetup -P` created both partition devices, and
-formatting, mounting, `blkid -L`, the PARTUUID lookup and `fstrim` all
-worked. That test ran in the older Ubuntu 20.04 distro, whose `sfdisk` is
-too old for the `type=uefi` names in section 2; Ubuntu 24.04's takes them.
+2.6.3 runs). On 2026-11-19, sections 1 and 2 and the chapter 3 downloads
+were run on the workstation, in Ubuntu 24.04: `version-check.sh` printed only
+`OK` lines; `sfdisk` took the `type=uefi` names; `losetup -P` created
+`loop0p1` and `loop0p2`; formatting and mounting `$LFS` worked. A separate
+test with a small image also checked `blkid -L`, the PARTUUID lookup and
+`fstrim`.
 
 ---
 
