@@ -44,8 +44,8 @@ list doesn't name CPU architectures.
   [wsl2-build-host.md](wsl2-build-host.md#1-install-wsl2-and-ubuntu), with the
   `.wslconfig` from [section 2](wsl2-build-host.md#2-memory-cpus-and-disk).
   The Yocto docs' minimum is 32 GB of RAM, measured on a 4-core machine. WSL
-  gets 24 GB plus 16 GB of swap there; if a build job dies with `Killed`,
-  step 5 says what to change.
+  gets 16 GB plus 16 GB of swap there, so step 4 limits the build to 10 jobs
+  at once.
 - **Disk.** The docs say 140 GB free for a build of `core-image-sato` (they
   measured 133 GB), and 40 GB at the peak if you add `rm_work`, which deletes
   each recipe's work files once it's built. This guide builds the smaller
@@ -221,6 +221,10 @@ hostname:pn-base-files = "nuc10-yocto"
 DEFAULT_TIMEZONE = "Europe/Copenhagen"
 IMAGE_INSTALL:append = " tzdata-core tzdata-europe pciutils"
 
+# Fewer jobs at once: with WSL at 16 GB, 20 jobs can run out of memory
+BB_NUMBER_THREADS = "10"
+PARALLEL_MAKE = "-j 10"
+
 # A root password and your own user, both with the password hashed above
 IMAGE_CLASSES += "extrausers"
 NUC_PASSWD = "\$5\$paste\$your-hash-here"
@@ -286,15 +290,11 @@ You should see three files ending in `.wic`, `.wic.bmap` and `.wic.zst`.
 They're links to the newest build; each build also leaves a copy with a
 timestamp in its name. The `.wic` size is what the stick has to hold.
 
-**If a job dies with `Killed`,** WSL ran out of memory. Give it more
-([section 2](wsl2-build-host.md#2-memory-cpus-and-disk)), or run fewer jobs
-at once by adding this to `conf/local.conf` and running `bitbake` again; it
-picks up where it stopped:
-
-```
-BB_NUMBER_THREADS = "8"
-PARALLEL_MAKE = "-j 8"
-```
+**If a job dies with `Killed`,** WSL ran out of memory. Lower both numbers
+in the "Fewer jobs" lines from step 4, to 8 or 6, and run `bitbake` again;
+it picks up where it stopped. Don't fix it by giving WSL more memory: at
+`memory=24GB` the build here starved Windows instead
+([section 2](wsl2-build-host.md#2-memory-cpus-and-disk)).
 
 **`User namespaces are not usable by BitBake, possibly due to AppArmor`**
 shouldn't happen here. BitBake uses user namespaces to cut build tasks off

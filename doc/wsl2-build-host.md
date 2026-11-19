@@ -62,19 +62,25 @@ WSL reads its settings from `.wslconfig` in your Windows user folder
 
 ```ini
 [wsl2]
-memory=24GB
+memory=16GB
 processors=20
 swap=16GB
 ```
 
-Why: by default WSL gets 16 GB here, and swap of a quarter of that. A Yocto
-build running 20 jobs at once can need more than that while it links the
-big packages, and running out kills the build halfway. Yocto's docs ask for
-32 GB; 24 GB plus 16 GB of swap is as close as this machine gets while
-leaving 8 GB for Windows, and the Yocto guide says what to turn down if a
-build still runs out. LFS needs far less. `processors=20` is the default
+Why: 16 GB is WSL's default here (half the RAM), written down so you can see
+it. The setting that matters is `swap`: by default WSL gets only a quarter
+of its memory as swap, and a build that runs out of memory dies halfway.
+With 16 GB of swap, a Yocto build that briefly needs more slows down
+instead. Yocto's docs ask for 32 GB of RAM; the Yocto guide runs fewer jobs
+at once to fit in 16. LFS needs far less. `processors=20` is the default
 anyway; it's there so you know where to turn it down if Windows gets
 sluggish during a build.
+
+**Don't give WSL much more than half.** The first Yocto build here ran with
+`memory=24GB`. WSL's VM grew to 21.6 GB, much of it Linux's file cache,
+which it doesn't hand back to Windows while a build runs. Windows was left
+with 0.9 GB free and the build had to be stopped at task 6,244 of 6,335. It
+resumed fine with 16 GB.
 
 The settings take effect after WSL restarts:
 
