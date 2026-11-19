@@ -12,7 +12,9 @@ the NUC boots what it booted before.
 Checked against **Yocto Project 6.0.4 "Wrynose"** (released 2026-10-20) and
 [its documentation](https://docs.yoctoproject.org/6.0.4/).
 
-**Status:** written 2026-11-19, not yet tried on the NUC.
+**Status:** written 2026-11-19. Steps 1 to 6 were run on the Windows
+workstation that day: the image built and booted in QEMU, with the
+no-password login from step 4. Not yet tried on the NUC.
 
 **Why 6.0:** on 2026-11-19 there are two current releases. 6.1 "Blacksail"
 (October 2026) is the newest, but is supported only until April 2027. 6.0
@@ -51,12 +53,15 @@ list doesn't name CPU architectures.
   each recipe's work files once it's built. This guide builds the smaller
   `core-image-base`, so those are upper bounds
   ([system requirements](https://docs.yoctoproject.org/6.0.4/ref-manual/system-requirements.html)).
-- **Time.** The docs give no figure. The first build downloads several GB of
+  Measured here: 107 GB without `rm_work` (88 GB of work files in
+  `build/tmp`, 12 GB of downloads, 7 GB of cache).
+- **Time.** The docs give no figure. On the workstation (i7-12700K) the first
+  build took about 2 hours and 6,335 tasks. It downloads several GB of
   sources and compiles a cross toolchain, the kernel and several hundred
-  packages. Later builds reuse what's already built and take minutes.
+  packages. Later builds reuse what's already built.
 - **A USB stick or USB SSD of 8 GB or more.** Writing the image erases it.
-  The image's size isn't confirmed; it includes all of linux-firmware. Check
-  the `.wic` file's size in step 5.
+  The `.wic` came out at 3.6 GB, most of it linux-firmware, so a 4 GB stick
+  is too tight.
 - **A network cable** to the NUC. This image has no Wi-Fi driver (see below).
 - **An HDMI screen and a USB keyboard** for the first boot.
 
@@ -190,22 +195,7 @@ virtual environment from step 2 is only for `bitbake-setup` itself.
 ## 4. Configure the image
 
 Your settings go at the end of `conf/local.conf` (in the `build` directory),
-which is nearly empty to start with.
-
-**A password.** The image gets a root password and a user of your own, both
-from a hashed password. Make the hash:
-
-```bash
-printf '%q\n' "$(mkpasswd -m sha256crypt)"
-```
-
-Type the password at the prompt. Use only letters and digits: the NUC's
-console has the US keyboard layout, so symbols aren't where the Danish
-keyboard shows them. You should see a line like `\$5\$...\$...`; `printf
-'%q'` puts the backslashes before each `$`, which the setting needs.
-
-Then add this to the end of `conf/local.conf`, with your hash on the
-`NUC_PASSWD` line. `nuc` is the user name; use another if you like.
+which is nearly empty to start with. Add this:
 
 ```
 # --- NUC10, see doc/yocto-guide.md ---
@@ -224,7 +214,43 @@ IMAGE_INSTALL:append = " tzdata-core tzdata-europe pciutils"
 # Fewer jobs at once: with WSL at 16 GB, 20 jobs can run out of memory
 BB_NUMBER_THREADS = "10"
 PARALLEL_MAKE = "-j 10"
+```
 
+**A way to log in.** Without one, Yocto sets root's password to `*` and
+nobody can log in. Pick one of these three.
+
+**No password in the image (used here).** Add:
+
+```
+# No baked-in password: root logs in with an empty password at the console
+# only (OpenSSH keeps PermitEmptyPasswords no). Run passwd at first login.
+EXTRA_IMAGE_FEATURES += "empty-root-password"
+```
+
+Root logs in at the NUC's console with no password, and the login banner
+says so. SSH refuses it, because the image's OpenSSH keeps its defaults
+(`PermitRootLogin prohibit-password`, `PermitEmptyPasswords no`). So it's
+open only to someone at the keyboard. Checked in QEMU on 2026-11-19: the
+console login worked, and SSH as root with an empty password got
+`Permission denied`. Run `passwd` after your first login. The password
+stays on the stick until you write the image again. For SSH, add your
+public key at the console:
+`mkdir -p ~/.ssh && echo '<your public key>' >> ~/.ssh/authorized_keys`.
+
+**A password baked in.** The image gets a root password and a user of your
+own, both from a hashed password. Make the hash:
+
+```bash
+printf '%q\n' "$(mkpasswd -m sha256crypt)"
+```
+
+Type the password at the prompt. Use only letters and digits: the NUC's
+console has the US keyboard layout, so symbols aren't where the Danish
+keyboard shows them. You should see a line like `\$5\$...\$...`; `printf
+'%q'` puts the backslashes before each `$`, which the setting needs. Then
+add this, with your hash on the `NUC_PASSWD` line (`nuc` is the user name):
+
+```
 # A root password and your own user, both with the password hashed above
 IMAGE_CLASSES += "extrausers"
 NUC_PASSWD = "\$5\$paste\$your-hash-here"
@@ -234,15 +260,14 @@ EXTRA_USERS_PARAMS = "\
 "
 ```
 
-What it gives you: root can log in at the NUC's console with the password.
-Root can't log in over SSH with a password (the image's OpenSSH default), so
-you SSH in as `nuc` and run `su -`. The user and password mechanism is the
+Root logs in at the console with the password. Root can't log in over SSH
+with a password, so you SSH in as `nuc` and run `su -`. This uses the
 [`extrausers`](https://docs.yoctoproject.org/6.0.4/ref-manual/classes.html#extrausers)
 class. Don't put this file, or a layer with the hash in it, in a public
 repository: a password hash can be cracked offline.
 
-**Or, for a quick test,** skip the user lines and enable 6.0's ready-made
-fragment instead:
+**Root with no password everywhere, for a quick test only.** Enable 6.0's
+ready-made fragment instead:
 
 ```bash
 bitbake-config-build enable-fragment core/yocto/root-login-with-empty-password
@@ -327,9 +352,9 @@ next build puts it back from the cache.
 ## 6. Optional: boot it in QEMU first
 
 This boots the same `.wic` in a virtual machine inside WSL, to check the
-login and SSH before you write a stick. Not confirmed for `genericx86-64`:
-the Yocto docs show `runqemu` with the `qemu*` machines; the commands below
-use `runqemu`'s documented options and come from reading its source.
+login and SSH before you write a stick. The Yocto docs show `runqemu` with
+the `qemu*` machines; the commands below worked for `genericx86-64` on the
+workstation on 2026-11-19.
 
 KVM makes it fast, and WSL2 has it when nested virtualization is on (the
 default on Windows 11):
@@ -347,8 +372,14 @@ Build it once, then start the VM:
 
 ```bash
 bitbake ovmf
-runqemu genericx86-64 core-image-base wic ovmf nographic slirp snapshot kvm
+runqemu core-image-base wic ovmf nographic slirp snapshot kvm
 ```
+
+**Don't name the machine** (`runqemu genericx86-64 ...`). `runqemu` would set
+`MACHINE` itself, and the `machine/genericx86-64` fragment from step 2
+already sets it, so BitBake stops with `A builtin fragment
+'machine/genericx86-64' is used while MACHINE has already got an
+assignment.`
 
 - `wic ovmf`: boot the `.wic` with the OVMF UEFI firmware.
 - `nographic`: the VM's serial console is your terminal; no window.
@@ -357,13 +388,27 @@ runqemu genericx86-64 core-image-base wic ovmf nographic slirp snapshot kvm
 - `snapshot`: throw away what the VM writes, so the `.wic` stays as built.
 - `kvm`: leave it out if `/dev/kvm` doesn't exist.
 
-You should see the GRUB menu, kernel messages, a pause while the start
-scripts run on the VM's (invisible) screen, then `nuc10-yocto login:`. From
-a second WSL terminal:
+You should see the `GNU GRUB version 2.14` menu, kernel messages, a pause
+while the start scripts run on the VM's (invisible) screen, then the login
+prompt, about 20 seconds in all with KVM:
+
+```
+Poky (Yocto Project Reference Distro) 6.0.4 nuc10-yocto /dev/ttyS0
+Type 'root' to login with superuser privileges (no password will be asked).
+nuc10-yocto login:
+```
+
+The second line appears only with the no-password login. `cat /proc/cmdline`
+in the VM shows `root=PARTUUID=... rootwait`, and `eth0` gets `10.0.2.15`
+from QEMU. From a second WSL terminal, with the baked-in password:
 
 ```bash
 ssh -p 2222 nuc@127.0.0.1
 ```
+
+With the no-password login, `ssh -p 2222 root@127.0.0.1` should ask for a
+password and refuse an empty one: `Permission denied`. That's the SSH side
+working as intended.
 
 To stop the VM, run `poweroff` in it, or press `Ctrl+A` then `X`.
 
@@ -411,8 +456,9 @@ nuc10-yocto login:
 ```
 
 The version may be a later 6.0.x, because the setup follows the `wrynose`
-branches. Log in as `root` with your password (or with no password, if you
-used the quick-test fragment).
+branches. Log in as `root`: with no password if you used the no-password
+login or the quick-test fragment (then run `passwd`), otherwise with your
+password.
 
 **If it stops at `Waiting for root device PARTUUID=...`,** the kernel
 doesn't see the stick. Try another USB port, or another stick.
@@ -433,12 +479,15 @@ controller uses `e1000e` and the graphics uses `i915`; the Wi-Fi controller
 has no driver, as expected.
 
 **SSH in** from the workstation (WSL or PowerShell both have `ssh`), with the
-address from `ip a`:
+address from `ip a`. With the baked-in password:
 
 ```bash
 ssh nuc@<nuc-ip>
 su -
 ```
+
+With the no-password login, add your public key at the console first (step
+4), then `ssh root@<nuc-ip>`.
 
 The image also runs Avahi, so `ssh nuc@nuc10-yocto.local` may work from the
 Mac. Not confirmed from Windows or WSL.
