@@ -13,7 +13,9 @@ Checked against **Zephyr 4.5.0** (released 2026-10-28), **Zephyr SDK 1.0.1**
 and the [v4.5.0 source](https://github.com/zephyrproject-rtos/zephyr/tree/v4.5.0).
 Nothing here needs Zephyr's `main` branch.
 
-**Status:** written 2026-11-19, not yet tried on the NUC.
+**Status:** written 2026-11-19. Steps 1 to 5 and the step 8 build were run
+on the Windows workstation that day, including QEMU; not yet tried on the
+NUC.
 
 Nothing is built on the NUC, and nothing is written to its NVMe drive: the
 image goes on a USB stick, and the samples have no storage drivers.
@@ -51,9 +53,9 @@ Not used: Zephyr's multiboot framebuffer driver, for booting through GRUB.
 It's a display driver, not a text console, the Alder Lake board's devicetree
 doesn't include it, and it only accepts a framebuffer below 4 GB.
 
-**How sure:** the QEMU runs on the Mac or in WSL2 follow Zephyr's documented
-path. QEMU on native Windows has known problems ([step 4](#4-run-it-in-qemu-first)).
-The NUC part is an experiment: each piece is in Zephyr 4.5.0, and the EFI
+**How sure:** the Windows builds and the QEMU runs were checked on the
+workstation; QEMU on native Windows needs a `PATH` fix
+([step 4](#4-run-it-in-qemu-first)). The NUC part is an experiment: each piece is in Zephyr 4.5.0, and the EFI
 boot path is the one Intel's boards use, but no board turns the EFI console
 on by default, and there's no report of this combination (another board's
 target, the EFI console, Comet Lake firmware). It may need one of the fixes in
@@ -91,6 +93,11 @@ Then close the terminal and open a new one, so it picks up the new `PATH`.
 Use Python 3.12 even if a newer one is installed: the Getting Started Guide
 warns that newer releases may fail to install Zephyr's packages on Windows.
 
+Leave out what you already have. On the workstation, CMake, Git and 7-Zip
+came from [scoop](https://scoop.sh/), and that works as well. On 2026-11-19
+winget's `wget` package failed its installer hash check; nothing in this
+guide needed it.
+
 ## 2. Get Zephyr 4.5.0
 
 ```powershell
@@ -107,7 +114,8 @@ west zephyr-export
 ```
 
 `Set-ExecutionPolicy` is needed once, so PowerShell may run the venv's
-activation script. `--mr v4.5.0` pins the release tag instead of `main`.
+activation script. Skip it if `Get-ExecutionPolicy -List` already shows
+`RemoteSigned` for `LocalMachine`, as it does on the workstation. `--mr v4.5.0` pins the release tag instead of `main`.
 `west update` takes a while.
 
 You should see the prompt start with `(.venv)`, and
@@ -145,7 +153,10 @@ and installs to `C:\Users\<you>\zephyr-sdk-1.0.1`. You should see:
     - x86_64-zephyr-elf
 ```
 
-followed by a list of the toolchains you didn't install.
+followed by a list of the toolchains you didn't install. The install itself
+prints `SKIPPED: Windows host tools are not available yet.` Ignore it: the
+host tools are installed anyway, and QEMU is in
+`zephyr-sdk-1.0.1\hosttools\qemu`.
 
 ### On the Mac
 
@@ -214,23 +225,23 @@ You should see 16 lines starting `Pi value calculated by thread #`, then
 **On the Mac**, Zephyr's instructions install QEMU (from Homebrew, and again
 in the SDK), so this should work as shown.
 
-### Native Windows: not confirmed
+### Native Windows: add two folders from Git first
 
 Since 1.0.0 the SDK ships QEMU for Windows too (QEMU 10.0.2, in
-`zephyr-sdk-1.0.1\hosttools\qemu`), and the build finds it there. Two
-problems are known or likely:
+`zephyr-sdk-1.0.1\hosttools\qemu`), and the build finds it there. But
+`west build -t run` fails in a plain PowerShell, in two ways:
 
-- Zephyr issue [#107534](https://github.com/zephyrproject-rtos/zephyr/issues/107534)
-  reports that this QEMU exits silently from PowerShell and `cmd` (exit code
-  `-1073741515`) because `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`
-  aren't in the SDK, while it runs from Git Bash. The issue was closed as
-  stale on 2026-08-09 without a fix, and there's no newer SDK.
-- For `qemu_x86_64`, the run target pipes an `objcopy` step through `grep`
-  and `true`, which plain Windows doesn't have.
+- The run target pipes an `objcopy` step through `grep` and `true`, which
+  Windows doesn't have: `'grep' is not recognized as an internal or external
+  command`.
+- QEMU itself needs `libgcc_s_seh-1.dll` and `libwinpthread-1.dll`, which
+  the SDK leaves out. Without them it exits at once with code `3221225781`
+  (`0xC0000135`, a DLL not found), as Zephyr issue
+  [#107534](https://github.com/zephyrproject-rtos/zephyr/issues/107534)
+  reports. The issue was closed as stale on 2026-08-09 without a fix.
 
-Git for Windows (installed in step 1) has both DLLs in `mingw64\bin`, and
-`grep` and `true` in `usr\bin`. Adding the two folders to this terminal's
-`PATH` may be enough:
+Git for Windows has both DLLs in `mingw64\bin`, and `grep` and `true` in
+`usr\bin`. Add both folders to this terminal's `PATH`; one isn't enough:
 
 ```powershell
 $Env:PATH += ";C:\Program Files\Git\mingw64\bin;C:\Program Files\Git\usr\bin"
@@ -238,7 +249,12 @@ west build -p always -b qemu_x86_64 samples\hello_world
 west build -t run
 ```
 
-If it still fails, run QEMU on the Mac or in WSL2.
+With Git from scoop, the folders are
+`$Env:USERPROFILE\scoop\apps\git\current\mingw64\bin` and `...\usr\bin`.
+Checked on 2026-11-19: with both folders, hello_world and the pi sample ran
+in QEMU from PowerShell with the output shown above (pi: `All 16 threads
+executed by 2 cores in 15 msec`). If it still fails for you, run QEMU on the
+Mac or in WSL2.
 
 ### In WSL2
 
@@ -304,8 +320,11 @@ for this build:
   I/O 0x3f8; the NUC has neither, so don't probe them.
 - `CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC` is the TSC rate from the table.
 
-You should see the build finish, a file `build\zephyr\zephyr.efi`, and
-`CONFIG_X86_EFI_CONSOLE=y` among the lines this prints:
+You should see the build finish, a file `build\zephyr\zephyr.efi` of about
+2.4 MB, and `CONFIG_X86_EFI_CONSOLE=y` among the lines this prints. The
+build's last lines include `objcopy: ... section .trash_bin lma ... adjusted
+to ...`, which is harmless. The RAM line shows about 69 MB used: that's the
+64 MB ACPI heap ([below](#whats-borrowed-from-alder-lake-n-and-what-could-break)).
 
 ```powershell
 Select-String EFI_CONSOLE build\zephyr\.config
@@ -471,12 +490,8 @@ from Zephyr on this NUC; the QEMU runs in step 4 are the fallback.
 
 ## Not confirmed
 
-- That any of this boots on the NUC 10. Nothing here has been built or run
-  yet (status above).
-- Building `zephyr.efi` on native Windows. A Python script
-  (`arch/x86/zefi/zefi.py`) runs the SDK's compiler and `objcopy` to write
-  the UEFI file; nothing in it looks Linux-only, but it hasn't been tried.
-- QEMU from PowerShell, with or without the `PATH` change in step 4.
+- That any of this boots on the NUC 10. The builds and the QEMU runs were
+  checked on the workstation (status above); the NUC part wasn't.
 - Whether the NUC 10's firmware has a built-in UEFI shell.
 - Whether calling the firmware console from a second CPU works on this
   firmware.
