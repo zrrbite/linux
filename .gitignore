@@ -1,0 +1,17 @@
+# Disk images and build output belong in WSL or Downloads, not in this repo
+*.img
+*.wic
+*.iso
+*.vhdx
+*.efi
+build/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
